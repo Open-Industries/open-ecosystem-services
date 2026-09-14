@@ -23,3 +23,10 @@ jobs:
           for p in pathlib.Path('.').rglob('*.yaml'):
               yaml.safe_load(p.read_text())
           PY
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: operators/appdeployer/go.mod
+          cache-dependency-path: operators/appdeployer/go.sum
+      - name: Test AppDeployer Operator
+        working-directory: operators/appdeployer
+        run: go test ./...

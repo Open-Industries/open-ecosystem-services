@@ -1,0 +1,6 @@
+namespace: appdeployer-system
+resources:
+  - namespace.yaml
+  - ../crd
+  - ../rbac
+  - ../manager

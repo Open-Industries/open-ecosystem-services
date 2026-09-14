@@ -1,0 +1,7 @@
+resources:
+  - manager.yaml
+images:
+  - name: controller
+    newName: quay.io/open-industries/appdeployer-operator
+    newTag: 0.1.0
+

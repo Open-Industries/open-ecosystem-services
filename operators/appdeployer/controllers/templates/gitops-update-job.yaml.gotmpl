@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .GitOpsJobName }}
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: appdeployer
+    app.kubernetes.io/instance: {{ .Name }}
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: promote
+          image: alpine/git:v2.47.2
+          env:
+            - name: GIT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .GitOpsSecret }}
+                  key: username
+            - name: GIT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .GitOpsSecret }}
+                  key: password
+          command: [/bin/sh, -c]
+          args:
+            - |
+              set -eu
+              apk add --no-cache kustomize
+              git config --global credential.helper '!f() { echo "username=$GIT_USERNAME"; echo "password=$GIT_PASSWORD"; }; f'
+              git clone --depth 1 --branch {{ shellq .GitOpsRevision }} {{ shellq .Spec.GitOps.RepositoryURL }} /tmp/gitops
+              cd "/tmp/gitops/{{ .Spec.GitOps.Path }}"
+              kustomize edit set image {{ shellq .Spec.GitOps.KustomizationImage }}={{ shellq .ImageRef }}
+              git config user.name "AppDeployer Operator"
+              git config user.email "appdeployer@openindustries.org"
+              git add kustomization.y*ml
+              git diff --cached --quiet && exit 0
+              git commit -m "chore(production): deploy {{ .ImageRef }}"
+              git push origin HEAD:{{ shellq .GitOpsRevision }}

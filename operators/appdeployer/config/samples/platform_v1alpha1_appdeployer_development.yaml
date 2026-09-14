@@ -1,0 +1,53 @@
+apiVersion: platform.openindustries.org/v1alpha1
+kind: AppDeployer
+metadata:
+  name: orders-api
+  namespace: orders-dev
+spec:
+  env: development
+  builderImage: registry.access.redhat.com/ubi9/openjdk-21:latest
+  source:
+    url: https://github.com/example/orders-api.git
+    revision: main
+    contextDir: .
+    credentialsSecretRef:
+      name: source-git-credentials
+  artifactRepository:
+    type: nexus
+    url: https://nexus.example.com/repository/maven-public/
+    credentialsSecretRef:
+      name: nexus-credentials
+    mavenSettingsSecretRef:
+      name: maven-settings
+  sonarQube:
+    enabled: true
+    url: https://sonarqube.example.com
+    projectKey: open-industries-orders-api
+    tokenSecretRef:
+      name: sonarqube-token
+    qualityGateWait: true
+    qualityGateTimeoutSeconds: 300
+  registry:
+    image: quay.io/open-industries/orders-api
+    tag: dev-1.0.0
+    credentialsSecretRef:
+      name: registry-push-credentials
+  tests:
+    unitTests: true
+    unitTestCommand: ./mvnw --batch-mode test
+    integrationTests: true
+    integrationTestCommand: ./mvnw --batch-mode verify -Pintegration
+    testImage: registry.access.redhat.com/ubi9/openjdk-21:latest
+  gitOps:
+    repositoryURL: https://github.com/example/orders-gitops.git
+    revision: main
+    path: environments/development
+    kustomizationImage: quay.io/open-industries/orders-api
+    credentialsSecretRef:
+      name: gitops-credentials
+    argoCDNamespace: openshift-gitops
+    project: default
+    destinationServer: https://kubernetes.default.svc
+    destinationNamespace: orders-dev
+    autoSync: true
+

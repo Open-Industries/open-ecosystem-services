@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .ApplicationName }}
+  namespace: {{ .ArgoNamespace }}
+  labels:
+    app.kubernetes.io/managed-by: appdeployer-operator
+    platform.openindustries.org/owner-namespace: {{ .Namespace }}
+spec:
+  project: {{ .ArgoProject }}
+  source:
+    repoURL: {{ q .Spec.GitOps.RepositoryURL }}
+    targetRevision: {{ q .GitOpsRevision }}
+    path: {{ q .Spec.GitOps.Path }}
+  destination:
+    server: {{ q .DestinationServer }}
+    namespace: {{ q .Spec.GitOps.DestinationNamespace }}
+  {{- if .Spec.GitOps.AutoSync }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  {{- end }}

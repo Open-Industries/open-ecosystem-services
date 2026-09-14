@@ -1,0 +1,315 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: {{ .Name }}
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: appdeployer
+    app.kubernetes.io/instance: {{ .Name }}
+spec:
+  params:
+    - name: git-url
+      type: string
+      default: {{ q .Spec.Source.URL }}
+    - name: git-revision
+      type: string
+      default: {{ q .SourceRevision }}
+    - name: context-dir
+      type: string
+      default: {{ q .SourceContextDir }}
+    - name: builder-image
+      type: string
+      default: {{ q .Spec.BuilderImage }}
+    - name: image-url
+      type: string
+      default: {{ q .ImageRef }}
+  workspaces:
+    - name: shared
+    - name: registry-auth
+  tasks:
+    - name: clone-source
+      taskSpec:
+        workspaces:
+          - name: output
+        params:
+          - name: url
+            type: string
+          - name: revision
+            type: string
+        steps:
+          - name: clone
+            image: alpine/git:v2.47.2
+            workingDir: $(workspaces.output.path)
+            {{- if .GitSourceSecret }}
+            env:
+              - name: GIT_USERNAME
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .GitSourceSecret }}
+                    key: username
+              - name: GIT_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .GitSourceSecret }}
+                    key: password
+              - name: SOURCE_URL
+                value: $(params.url)
+              - name: SOURCE_REVISION
+                value: $(params.revision)
+            {{- else }}
+            env:
+              - name: SOURCE_URL
+                value: $(params.url)
+              - name: SOURCE_REVISION
+                value: $(params.revision)
+            {{- end }}
+            script: |
+              #!/bin/sh
+              set -eu
+              rm -rf source
+              {{- if .GitSourceSecret }}
+              git config --global credential.helper '!f() { echo "username=$GIT_USERNAME"; echo "password=$GIT_PASSWORD"; }; f'
+              {{- end }}
+              git clone --depth 1 --branch "$SOURCE_REVISION" "$SOURCE_URL" source
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.git-revision)
+      workspaces:
+        - name: output
+          workspace: shared
+{{- if .Spec.ArtifactRepository }}
+    - name: configure-dependencies
+      runAfter: [clone-source]
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: configure
+            image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+            workingDir: $(workspaces.source.path)/source
+            env:
+              - name: ARTIFACT_REPOSITORY_TYPE
+                value: {{ q .Spec.ArtifactRepository.Type }}
+              - name: ARTIFACT_REPOSITORY_URL
+                value: {{ q .Spec.ArtifactRepository.URL }}
+            {{- if .ArtifactCredentialsSecret }}
+            envFrom:
+              - secretRef:
+                  name: {{ .ArtifactCredentialsSecret }}
+            {{- end }}
+            script: |
+              #!/bin/sh
+              set -eu
+              mkdir -p .appdeployer
+              printf 'type=%s\nurl=%s\n' "$ARTIFACT_REPOSITORY_TYPE" "$ARTIFACT_REPOSITORY_URL" > .appdeployer/artifacts.env
+              {{- if .MavenSettingsSecret }}
+              mkdir -p "$HOME/.m2"
+              cp /appdeployer/maven/settings.xml "$HOME/.m2/settings.xml"
+              {{- end }}
+            {{- if .MavenSettingsSecret }}
+            volumeMounts:
+              - name: maven-settings
+                mountPath: /appdeployer/maven
+                readOnly: true
+            {{- end }}
+        {{- if .MavenSettingsSecret }}
+        volumes:
+          - name: maven-settings
+            secret:
+              secretName: {{ .MavenSettingsSecret }}
+        {{- end }}
+      workspaces:
+        - name: source
+          workspace: shared
+{{- end }}
+{{- if .Spec.Tests.UnitTests }}
+    - name: unit-tests
+      runAfter: [{{ .AfterClone }}]
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: test
+            image: {{ .TestImage }}
+            workingDir: $(workspaces.source.path)/source/$(params.context-dir)
+            {{- if .ArtifactCredentialsSecret }}
+            envFrom:
+              - secretRef:
+                  name: {{ .ArtifactCredentialsSecret }}
+            {{- end }}
+            script: |
+              #!/bin/sh
+              set -eu
+              {{ .UnitTestCommand }}
+      workspaces:
+        - name: source
+          workspace: shared
+{{- end }}
+{{- if .SonarEnabled }}
+    - name: sonarqube-quality-gate
+      runAfter: [{{ .AfterUnitTests }}]
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: scan
+            image: sonarsource/sonar-scanner-cli:latest
+            workingDir: $(workspaces.source.path)/source/$(params.context-dir)
+            env:
+              - name: SONAR_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .SonarTokenSecret }}
+                    key: token
+            script: |
+              #!/bin/sh
+              set -eu
+              sonar-scanner \
+                -Dsonar.host.url={{ shellq .Spec.SonarQube.URL }} \
+                -Dsonar.projectKey={{ shellq .Spec.SonarQube.ProjectKey }} \
+                -Dsonar.token="$SONAR_TOKEN" \
+                -Dsonar.qualitygate.wait={{ .Spec.SonarQube.QualityGateWait }} \
+                -Dsonar.qualitygate.timeout={{ .SonarTimeout }}
+      workspaces:
+        - name: source
+          workspace: shared
+{{- end }}
+    - name: s2i-build
+      runAfter: [{{ .AfterQuality }}]
+      taskSpec:
+        params:
+          - name: builder-image
+            type: string
+        workspaces:
+          - name: source
+        steps:
+          - name: generate
+            image: quay.io/openshift/origin-s2i:4.18
+            workingDir: $(workspaces.source.path)/source/$(params.context-dir)
+            {{- if .ArtifactCredentialsSecret }}
+            envFrom:
+              - secretRef:
+                  name: {{ .ArtifactCredentialsSecret }}
+            {{- end }}
+            script: |
+              #!/bin/sh
+              set -eu
+              s2i build . "$(params.builder-image)" appdeployer-local:build --as-dockerfile Dockerfile.s2i
+          - name: build
+            image: quay.io/buildah/stable:v1.39
+            securityContext:
+              capabilities:
+                add: [SETFCAP]
+            workingDir: $(workspaces.source.path)/source/$(params.context-dir)
+            script: |
+              #!/bin/sh
+              set -eu
+              buildah --storage-driver=vfs bud -f Dockerfile.s2i -t appdeployer-local:build .
+              buildah --storage-driver=vfs push appdeployer-local:build "oci-archive:$(workspaces.source.path)/appdeployer-image.tar:appdeployer-local:build"
+      params:
+        - name: builder-image
+          value: $(params.builder-image)
+      workspaces:
+        - name: source
+          workspace: shared
+    - name: push-image
+      runAfter: [s2i-build]
+      taskSpec:
+        params:
+          - name: image-url
+            type: string
+        workspaces:
+          - name: source
+          - name: registry-auth
+        steps:
+          - name: push
+            image: quay.io/skopeo/stable:v1.18
+            script: |
+              #!/bin/sh
+              set -eu
+              TLS_VERIFY={{ .RegistryTLSVerify }}
+              skopeo copy --src-tls-verify=false --dest-tls-verify="$TLS_VERIFY" \
+                --authfile "$(workspaces.registry-auth.path)/.dockerconfigjson" \
+                "oci-archive:$(workspaces.source.path)/appdeployer-image.tar" \
+                "docker://$(params.image-url)"
+      params:
+        - name: image-url
+          value: $(params.image-url)
+      workspaces:
+        - name: source
+          workspace: shared
+        - name: registry-auth
+          workspace: registry-auth
+{{- if .Spec.Tests.IntegrationTests }}
+    - name: integration-tests
+      runAfter: [push-image]
+      taskSpec:
+        params:
+          - name: image-url
+            type: string
+        workspaces:
+          - name: source
+        steps:
+          - name: test
+            image: {{ .TestImage }}
+            workingDir: $(workspaces.source.path)/source/$(params.context-dir)
+            env:
+              - name: IMAGE_URL
+                value: $(params.image-url)
+            script: |
+              #!/bin/sh
+              set -eu
+              {{ .IntegrationTestCommand }}
+      params:
+        - name: image-url
+          value: $(params.image-url)
+      workspaces:
+        - name: source
+          workspace: shared
+{{- end }}
+    - name: update-gitops
+      runAfter: [{{ .AfterPush }}]
+      taskSpec:
+        params:
+          - name: image-url
+            type: string
+        workspaces:
+          - name: work
+        steps:
+          - name: commit
+            image: alpine/git:v2.47.2
+            env:
+              - name: GIT_USERNAME
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .GitOpsSecret }}
+                    key: username
+              - name: GIT_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .GitOpsSecret }}
+                    key: password
+            script: |
+              #!/bin/sh
+              set -eu
+              apk add --no-cache kustomize
+              cd "$(workspaces.work.path)"
+              rm -rf gitops
+              git config --global credential.helper '!f() { echo "username=$GIT_USERNAME"; echo "password=$GIT_PASSWORD"; }; f'
+              git clone --depth 1 --branch {{ shellq .GitOpsRevision }} {{ shellq .Spec.GitOps.RepositoryURL }} gitops
+              cd "gitops/{{ .Spec.GitOps.Path }}"
+              kustomize edit set image {{ shellq .Spec.GitOps.KustomizationImage }}="$(params.image-url)"
+              git config user.name "AppDeployer Operator"
+              git config user.email "appdeployer@openindustries.org"
+              git add kustomization.y*ml
+              git diff --cached --quiet && exit 0
+              git commit -m "chore({{ .Spec.Env }}): deploy $(params.image-url)"
+              git push origin HEAD:{{ shellq .GitOpsRevision }}
+      params:
+        - name: image-url
+          value: $(params.image-url)
+      workspaces:
+        - name: work
+          workspace: shared
