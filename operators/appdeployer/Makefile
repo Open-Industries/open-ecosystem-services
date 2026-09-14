@@ -1,5 +1,6 @@
-IMG ?= quay.io/open-industries/appdeployer-operator:0.1.0
+IMG ?= quay.io/open-industries/appdeployer-operator:0.2.0
 CONTAINER_TOOL ?= podman
+KUBECTL ?= kubectl
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 LOCALBIN ?= $(CURDIR)/bin
 CONTROLLER_TOOLS_VERSION ?= v0.18.0
@@ -31,19 +32,18 @@ docker-push:
 	$(CONTAINER_TOOL) push ${IMG}
 
 install: manifests
-	kubectl apply -f config/crd/bases
+	$(KUBECTL) apply -f config/crd/bases
 
 uninstall:
-	kubectl delete -f config/crd/bases --ignore-not-found
+	$(KUBECTL) delete -f config/crd/bases --ignore-not-found
 
 deploy: manifests
 	cd config/manager && kustomize edit set image controller=${IMG}
-	kustomize build config/default | kubectl apply -f -
+	kustomize build config/default | $(KUBECTL) apply -f -
 
 undeploy:
-	kustomize build config/default | kubectl delete --ignore-not-found -f -
+	kustomize build config/default | $(KUBECTL) delete --ignore-not-found -f -
 
 controller-gen:
 	@mkdir -p $(LOCALBIN)
 	@test -x $(CONTROLLER_GEN) || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
-

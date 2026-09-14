@@ -11,6 +11,15 @@ const (
 	EnvironmentProduction  Environment = "production"
 )
 
+// DeploymentType selects a conventional Kubernetes workload or Knative Serving.
+// +kubebuilder:validation:Enum=standard;serverless
+type DeploymentType string
+
+const (
+	DeploymentTypeStandard   DeploymentType = "standard"
+	DeploymentTypeServerless DeploymentType = "serverless"
+)
+
 // SecretReference points to a Secret in the AppDeployer namespace.
 type SecretReference struct {
 	// Name is the Secret name.
@@ -100,6 +109,55 @@ type TestConfig struct {
 	TestImage string `json:"testImage,omitempty"`
 }
 
+// ServerlessConfig controls the Knative Service stored in the GitOps repository.
+type ServerlessConfig struct {
+	// Platform identifies the serverless API implementation.
+	// +kubebuilder:default=knative
+	// +kubebuilder:validation:Enum=knative
+	Platform string `json:"platform,omitempty"`
+	// ServiceName is the metadata.name of the Knative Service.
+	ServiceName string `json:"serviceName"`
+	// ManifestPath is relative to gitOps.path and identifies the Knative Service YAML.
+	// +kubebuilder:default=service.yaml
+	ManifestPath string `json:"manifestPath,omitempty"`
+	// ContainerName identifies the container receiving the built image.
+	// +kubebuilder:default=user-container
+	ContainerName string `json:"containerName,omitempty"`
+	// MinScale allows zero so the service can scale to zero.
+	// +kubebuilder:validation:Minimum=0
+	MinScale *int32 `json:"minScale,omitempty"`
+	// MaxScale limits the number of replicas.
+	// +kubebuilder:validation:Minimum=1
+	MaxScale *int32 `json:"maxScale,omitempty"`
+	// ScaleTarget is the per-replica target for the selected metric.
+	// +kubebuilder:validation:Minimum=1
+	ScaleTarget *int32 `json:"scaleTarget,omitempty"`
+	// Metric selects the Knative Pod Autoscaler metric.
+	// +kubebuilder:default=concurrency
+	// +kubebuilder:validation:Enum=concurrency;rps
+	Metric string `json:"metric,omitempty"`
+	// ContainerConcurrency is the hard concurrent-request limit per replica; zero means unlimited.
+	// +kubebuilder:validation:Minimum=0
+	ContainerConcurrency *int64 `json:"containerConcurrency,omitempty"`
+	// TimeoutSeconds is the maximum request execution time.
+	// +kubebuilder:validation:Minimum=1
+	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`
+	// Visibility controls whether the Knative Route is externally reachable.
+	// +kubebuilder:default=external
+	// +kubebuilder:validation:Enum=external;cluster-local
+	Visibility string `json:"visibility,omitempty"`
+}
+
+// DeploymentConfig defines how Argo CD materializes the application runtime.
+// +kubebuilder:validation:XValidation:rule="self.type != 'serverless' || has(self.serverless)",message="serverless configuration is required when deployment.type is serverless"
+type DeploymentConfig struct {
+	// Type selects Deployment/Service manifests or a Knative Service.
+	// +kubebuilder:default=standard
+	Type DeploymentType `json:"type,omitempty"`
+	// Serverless contains Knative-specific settings.
+	Serverless *ServerlessConfig `json:"serverless,omitempty"`
+}
+
 // GitOpsConfig defines the deployment source of truth and Argo CD destination.
 type GitOpsConfig struct {
 	// RepositoryURL is the GitOps repository clone URL.
@@ -142,7 +200,9 @@ type AppDeployerSpec struct {
 	SonarQube          *SonarQubeConfig    `json:"sonarQube,omitempty"`
 	Registry           RegistryConfig      `json:"registry"`
 	Tests              TestConfig          `json:"tests,omitempty"`
-	GitOps             GitOpsConfig        `json:"gitOps"`
+	// Deployment selects standard Kubernetes or Knative serverless delivery.
+	Deployment DeploymentConfig `json:"deployment,omitempty"`
+	GitOps     GitOpsConfig     `json:"gitOps"`
 }
 
 // AppDeployerStatus reports reconciliation and delivery progress.

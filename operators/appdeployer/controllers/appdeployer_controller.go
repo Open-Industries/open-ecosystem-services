@@ -67,6 +67,10 @@ type templateData struct {
 	AfterClone, AfterUnitTests, AfterQuality, AfterPush                                                             string
 	RegistryTLSVerify                                                                                               string
 	SonarEnabled                                                                                                    bool
+	ServerlessEnabled                                                                                               bool
+	ServerlessServiceName, ServerlessManifestPath, ServerlessContainerName, ServerlessMinScale                      string
+	ServerlessMaxScale, ServerlessScaleTarget, ServerlessMetric, ServerlessContainerConcurrency                     string
+	ServerlessTimeoutSeconds, ServerlessVisibility                                                                  string
 	SonarTimeout                                                                                                    int32
 	Spec                                                                                                            platformv1alpha1.AppDeployerSpec
 }
@@ -456,6 +460,20 @@ func buildTemplateData(app *platformv1alpha1.AppDeployer) templateData {
 	if spec.GitOps.CredentialsSecretRef != nil {
 		data.GitOpsSecret = spec.GitOps.CredentialsSecretRef.Name
 	}
+	if spec.Deployment.Type == platformv1alpha1.DeploymentTypeServerless && spec.Deployment.Serverless != nil {
+		serverless := spec.Deployment.Serverless
+		data.ServerlessEnabled = true
+		data.ServerlessServiceName = serverless.ServiceName
+		data.ServerlessManifestPath = valueOr(serverless.ManifestPath, "service.yaml")
+		data.ServerlessContainerName = valueOr(serverless.ContainerName, "user-container")
+		data.ServerlessMetric = valueOr(serverless.Metric, "concurrency")
+		data.ServerlessVisibility = valueOr(serverless.Visibility, "external")
+		data.ServerlessMinScale = int32PointerString(serverless.MinScale)
+		data.ServerlessMaxScale = int32PointerString(serverless.MaxScale)
+		data.ServerlessScaleTarget = int32PointerString(serverless.ScaleTarget)
+		data.ServerlessContainerConcurrency = int64PointerString(serverless.ContainerConcurrency)
+		data.ServerlessTimeoutSeconds = int64PointerString(serverless.TimeoutSeconds)
+	}
 	return data
 }
 
@@ -507,6 +525,29 @@ func validateSpec(app *platformv1alpha1.AppDeployer) error {
 		}
 		if s.SonarQube != nil && s.SonarQube.Enabled && (s.SonarQube.URL == "" || s.SonarQube.ProjectKey == "" || s.SonarQube.TokenSecretRef == nil) {
 			return errors.New("enabled SonarQube requires url, projectKey, and tokenSecretRef")
+		}
+	}
+	if s.Deployment.Type != "" && s.Deployment.Type != platformv1alpha1.DeploymentTypeStandard && s.Deployment.Type != platformv1alpha1.DeploymentTypeServerless {
+		return errors.New("spec.deployment.type must be standard or serverless")
+	}
+	if s.Deployment.Type == platformv1alpha1.DeploymentTypeServerless {
+		serverless := s.Deployment.Serverless
+		if serverless == nil || serverless.ServiceName == "" {
+			return errors.New("spec.deployment.serverless.serviceName is required for serverless deployment")
+		}
+		if errs := validation.IsDNS1123Subdomain(serverless.ServiceName); len(errs) > 0 {
+			return fmt.Errorf("invalid serverless serviceName: %s", strings.Join(errs, ", "))
+		}
+		manifestPath := valueOr(serverless.ManifestPath, "service.yaml")
+		if strings.HasPrefix(manifestPath, "/") || strings.Contains(manifestPath, "..") || strings.ContainsAny(manifestPath, "\"'`$;|&\n\r") {
+			return errors.New("spec.deployment.serverless.manifestPath must be a safe relative path")
+		}
+		containerName := valueOr(serverless.ContainerName, "user-container")
+		if errs := validation.IsDNS1123Label(containerName); len(errs) > 0 {
+			return fmt.Errorf("invalid serverless containerName: %s", strings.Join(errs, ", "))
+		}
+		if serverless.MinScale != nil && serverless.MaxScale != nil && *serverless.MinScale > *serverless.MaxScale {
+			return errors.New("spec.deployment.serverless.minScale cannot exceed maxScale")
 		}
 	}
 	return nil
@@ -592,6 +633,20 @@ func valueOr(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func int32PointerString(value *int32) string {
+	if value == nil {
+		return ""
+	}
+	return strconv.FormatInt(int64(*value), 10)
+}
+
+func int64PointerString(value *int64) string {
+	if value == nil {
+		return ""
+	}
+	return strconv.FormatInt(*value, 10)
 }
 
 func (r *AppDeployerReconciler) setCondition(app *platformv1alpha1.AppDeployer, conditionType string, status metav1.ConditionStatus, reason, message string) {

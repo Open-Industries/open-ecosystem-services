@@ -5,6 +5,17 @@ AppDeployer is a Go-based Kubernetes Operator SDK project that coordinates S2I, 
 - `development`: clone, dependency configuration, optional unit tests, optional SonarQube Quality Gate, S2I Dockerfile generation, rootless Buildah build, registry push, optional integration tests, GitOps image update and Argo CD reconciliation.
 - `production`: no Tekton resources and no build. The controller validates the requested OCI image with Skopeo, updates the production Kustomize image through a standard Kubernetes Job, and reconciles the Argo CD `Application`.
 
+The deployment target can be `standard` Kubernetes manifests or a Knative `Service`. Serverless delivery manages scale-to-zero, minimum/maximum scale, autoscaling target, concurrency, timeout and external/cluster-local visibility through GitOps.
+
+Serverless application images must implement Knative's container runtime contract: start without interactive initialization, listen on the injected `PORT`, remain stateless, and tolerate rapid horizontal scaling and termination.
+
+## Platform guides
+
+- [Kubernetes installation and usage](docs/kubernetes-deployment.md)
+- [OpenShift installation and usage](docs/openshift-deployment.md)
+- [Knative GitOps base](examples/gitops/serverless/)
+- [Serverless AppDeployer sample](config/samples/platform_v1alpha1_appdeployer_serverless.yaml)
+
 ## Architecture
 
 ```mermaid
@@ -38,16 +49,23 @@ The controller expects these Secret shapes in each AppDeployer namespace:
 | Nexus/Artifactory credentials | arbitrary environment-variable keys used by the build |
 | Maven settings | `settings.xml` |
 
+## Deployment modes
+
+| `spec.deployment.type` | Runtime | Delivery behavior |
+|---|---|---|
+| `standard` | Kubernetes/OpenShift `Deployment`, `Service`, Route/Ingress through GitOps | Updates the image in the selected Kustomization |
+| `serverless` | Knative Serving / OpenShift Serverless | Updates the image and patches Knative autoscaling, concurrency, timeout and visibility settings |
+
 Use a least-privileged robot account for registry and Git credentials. Do not place tokens in the Custom Resource.
 
 ## Build and install
 
 ```bash
 make test
-make docker-build IMG=quay.io/your-org/appdeployer-operator:0.1.0
-make docker-push IMG=quay.io/your-org/appdeployer-operator:0.1.0
+make docker-build IMG=quay.io/your-org/appdeployer-operator:0.2.0
+make docker-push IMG=quay.io/your-org/appdeployer-operator:0.2.0
 make install
-make deploy IMG=quay.io/your-org/appdeployer-operator:0.1.0
+make deploy IMG=quay.io/your-org/appdeployer-operator:0.2.0
 ```
 
 Create the workload namespaces and credentials before applying a sample:

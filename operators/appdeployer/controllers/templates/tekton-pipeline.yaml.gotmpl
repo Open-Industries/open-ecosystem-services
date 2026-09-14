@@ -291,19 +291,60 @@ spec:
                   secretKeyRef:
                     name: {{ .GitOpsSecret }}
                     key: password
+              {{- if .ServerlessEnabled }}
+              - name: IMAGE_URL
+                value: $(params.image-url)
+              - name: SERVERLESS_SERVICE_NAME
+                value: {{ q .ServerlessServiceName }}
+              - name: SERVERLESS_MANIFEST_PATH
+                value: {{ q .ServerlessManifestPath }}
+              - name: SERVERLESS_CONTAINER_NAME
+                value: {{ q .ServerlessContainerName }}
+              - name: SERVERLESS_MIN_SCALE
+                value: {{ q .ServerlessMinScale }}
+              - name: SERVERLESS_MAX_SCALE
+                value: {{ q .ServerlessMaxScale }}
+              - name: SERVERLESS_SCALE_TARGET
+                value: {{ q .ServerlessScaleTarget }}
+              - name: SERVERLESS_METRIC
+                value: {{ q .ServerlessMetric }}
+              - name: SERVERLESS_CONTAINER_CONCURRENCY
+                value: {{ q .ServerlessContainerConcurrency }}
+              - name: SERVERLESS_TIMEOUT_SECONDS
+                value: {{ q .ServerlessTimeoutSeconds }}
+              - name: SERVERLESS_VISIBILITY
+                value: {{ q .ServerlessVisibility }}
+              {{- end }}
             script: |
               #!/bin/sh
               set -eu
-              apk add --no-cache kustomize
+              apk add --no-cache kustomize{{ if .ServerlessEnabled }} yq{{ end }}
               cd "$(workspaces.work.path)"
               rm -rf gitops
               git config --global credential.helper '!f() { echo "username=$GIT_USERNAME"; echo "password=$GIT_PASSWORD"; }; f'
               git clone --depth 1 --branch {{ shellq .GitOpsRevision }} {{ shellq .Spec.GitOps.RepositoryURL }} gitops
               cd "gitops/{{ .Spec.GitOps.Path }}"
               kustomize edit set image {{ shellq .Spec.GitOps.KustomizationImage }}="$(params.image-url)"
+              {{- if .ServerlessEnabled }}
+              test -f "$SERVERLESS_MANIFEST_PATH"
+              yq -e '.apiVersion == "serving.knative.dev/v1" and .kind == "Service"' "$SERVERLESS_MANIFEST_PATH" >/dev/null
+              yq -e '.spec.template.spec.containers[] | select(.name == strenv(SERVERLESS_CONTAINER_NAME))' "$SERVERLESS_MANIFEST_PATH" >/dev/null
+              yq -i '.metadata.name = strenv(SERVERLESS_SERVICE_NAME)' "$SERVERLESS_MANIFEST_PATH"
+              yq -i '(.spec.template.spec.containers[] | select(.name == strenv(SERVERLESS_CONTAINER_NAME)).image) = strenv(IMAGE_URL)' "$SERVERLESS_MANIFEST_PATH"
+              yq -i '.spec.template.metadata.annotations."autoscaling.knative.dev/metric" = strenv(SERVERLESS_METRIC)' "$SERVERLESS_MANIFEST_PATH"
+              if [ -n "$SERVERLESS_MIN_SCALE" ]; then yq -i '.spec.template.metadata.annotations."autoscaling.knative.dev/min-scale" = strenv(SERVERLESS_MIN_SCALE)' "$SERVERLESS_MANIFEST_PATH"; else yq -i 'del(.spec.template.metadata.annotations."autoscaling.knative.dev/min-scale")' "$SERVERLESS_MANIFEST_PATH"; fi
+              if [ -n "$SERVERLESS_MAX_SCALE" ]; then yq -i '.spec.template.metadata.annotations."autoscaling.knative.dev/max-scale" = strenv(SERVERLESS_MAX_SCALE)' "$SERVERLESS_MANIFEST_PATH"; else yq -i 'del(.spec.template.metadata.annotations."autoscaling.knative.dev/max-scale")' "$SERVERLESS_MANIFEST_PATH"; fi
+              if [ -n "$SERVERLESS_SCALE_TARGET" ]; then yq -i '.spec.template.metadata.annotations."autoscaling.knative.dev/target" = strenv(SERVERLESS_SCALE_TARGET)' "$SERVERLESS_MANIFEST_PATH"; else yq -i 'del(.spec.template.metadata.annotations."autoscaling.knative.dev/target")' "$SERVERLESS_MANIFEST_PATH"; fi
+              if [ -n "$SERVERLESS_CONTAINER_CONCURRENCY" ]; then yq -i '.spec.template.spec.containerConcurrency = (strenv(SERVERLESS_CONTAINER_CONCURRENCY) | tonumber)' "$SERVERLESS_MANIFEST_PATH"; else yq -i 'del(.spec.template.spec.containerConcurrency)' "$SERVERLESS_MANIFEST_PATH"; fi
+              if [ -n "$SERVERLESS_TIMEOUT_SECONDS" ]; then yq -i '.spec.template.spec.timeoutSeconds = (strenv(SERVERLESS_TIMEOUT_SECONDS) | tonumber)' "$SERVERLESS_MANIFEST_PATH"; else yq -i 'del(.spec.template.spec.timeoutSeconds)' "$SERVERLESS_MANIFEST_PATH"; fi
+              if [ "$SERVERLESS_VISIBILITY" = cluster-local ]; then yq -i '.metadata.labels."networking.knative.dev/visibility" = "cluster-local"' "$SERVERLESS_MANIFEST_PATH"; else yq -i 'del(.metadata.labels."networking.knative.dev/visibility")' "$SERVERLESS_MANIFEST_PATH"; fi
+              {{- end }}
               git config user.name "AppDeployer Operator"
               git config user.email "appdeployer@openindustries.org"
               git add kustomization.y*ml
+              {{- if .ServerlessEnabled }}
+              git add "$SERVERLESS_MANIFEST_PATH"
+              {{- end }}
               git diff --cached --quiet && exit 0
               git commit -m "chore({{ .Spec.Env }}): deploy $(params.image-url)"
               git push origin HEAD:{{ shellq .GitOpsRevision }}

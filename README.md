@@ -50,7 +50,7 @@ Every request or event should carry `correlation_id`, `causation_id`, `schema_ve
 
 ## AppDeployer Operator
 
-The [`operators/appdeployer`](operators/appdeployer/) module implements environment-aware application delivery. Development resources execute CI with Tekton and publish a GitOps change; production resources never build and instead validate an existing OCI image before promoting it through GitOps and Argo CD.
+The [`operators/appdeployer`](operators/appdeployer/) module implements environment-aware application delivery for conventional Kubernetes/OpenShift workloads and Knative/OpenShift Serverless services. Development resources execute CI with Tekton and publish a GitOps change; production resources never build and instead validate an existing OCI image before promoting it through GitOps and Argo CD.
 
 ## License
 

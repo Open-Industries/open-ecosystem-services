@@ -10,6 +10,8 @@ spec:
     tag: 1.0.0
     credentialsSecretRef:
       name: registry-pull-credentials
+  deployment:
+    type: standard
   gitOps:
     repositoryURL: https://github.com/example/orders-gitops.git
     revision: main
@@ -22,4 +24,3 @@ spec:
     destinationServer: https://kubernetes.default.svc
     destinationNamespace: orders-prod
     autoSync: true
-

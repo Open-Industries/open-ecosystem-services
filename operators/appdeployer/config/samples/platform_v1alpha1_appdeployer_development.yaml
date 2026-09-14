@@ -38,6 +38,8 @@ spec:
     integrationTests: true
     integrationTestCommand: ./mvnw --batch-mode verify -Pintegration
     testImage: registry.access.redhat.com/ubi9/openjdk-21:latest
+  deployment:
+    type: standard
   gitOps:
     repositoryURL: https://github.com/example/orders-gitops.git
     revision: main
@@ -50,4 +52,3 @@ spec:
     destinationServer: https://kubernetes.default.svc
     destinationNamespace: orders-dev
     autoSync: true
-

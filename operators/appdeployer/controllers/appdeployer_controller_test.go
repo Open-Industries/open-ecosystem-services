@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	platformv1alpha1 "github.com/Open-Industries/open-ecosystem-services/operators/appdeployer/api/v1alpha1"
@@ -50,6 +52,45 @@ func TestProductionRequiresNoSourceOrBuilder(t *testing.T) {
 	}
 	if _, err := renderUnstructured("application", applicationTemplate, data); err != nil {
 		t.Fatalf("render Application: %v", err)
+	}
+}
+
+func TestServerlessTemplatesPatchKnativeService(t *testing.T) {
+	app := developmentApp()
+	minScale, maxScale, target := int32(0), int32(20), int32(50)
+	concurrency, timeout := int64(100), int64(300)
+	app.Spec.Deployment = platformv1alpha1.DeploymentConfig{
+		Type: platformv1alpha1.DeploymentTypeServerless,
+		Serverless: &platformv1alpha1.ServerlessConfig{
+			Platform: "knative", ServiceName: "orders", ManifestPath: "service.yaml", ContainerName: "user-container",
+			MinScale: &minScale, MaxScale: &maxScale, ScaleTarget: &target, Metric: "concurrency",
+			ContainerConcurrency: &concurrency, TimeoutSeconds: &timeout, Visibility: "cluster-local",
+		},
+	}
+	if err := validateSpec(app); err != nil {
+		t.Fatalf("serverless spec rejected: %v", err)
+	}
+	data := buildTemplateData(app)
+	pipeline, err := renderUnstructured("pipeline", pipelineTemplate, data)
+	if err != nil {
+		t.Fatalf("render serverless pipeline: %v", err)
+	}
+	raw, _ := json.Marshal(pipeline.Object)
+	for _, expected := range []string{"serving.knative.dev/v1", "autoscaling.knative.dev/min-scale", "containerConcurrency", "cluster-local"} {
+		if !strings.Contains(string(raw), expected) {
+			t.Errorf("rendered pipeline does not configure %q", expected)
+		}
+	}
+
+	production := productionApp()
+	production.Spec.Deployment = app.Spec.Deployment
+	job, err := renderJob("gitops-update", gitOpsUpdateJobTemplate, buildTemplateData(production))
+	if err != nil {
+		t.Fatalf("render serverless production Job: %v", err)
+	}
+	raw, _ = json.Marshal(job)
+	if !strings.Contains(string(raw), "serving.knative.dev/v1") {
+		t.Error("production promotion Job does not patch a Knative Service")
 	}
 }
 

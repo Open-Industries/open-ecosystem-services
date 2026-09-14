@@ -1,0 +1,49 @@
+apiVersion: platform.openindustries.org/v1alpha1
+kind: AppDeployer
+metadata:
+  name: orders-functions
+  namespace: orders-serverless
+spec:
+  env: development
+  builderImage: registry.access.redhat.com/ubi9/openjdk-21:latest
+  source:
+    url: https://github.com/example/orders-functions.git
+    revision: main
+    contextDir: .
+  registry:
+    image: quay.io/open-industries/orders-functions
+    tag: dev-1.0.0
+    credentialsSecretRef:
+      name: registry-push-credentials
+  tests:
+    unitTests: true
+    unitTestCommand: ./mvnw --batch-mode test
+    integrationTests: false
+    testImage: registry.access.redhat.com/ubi9/openjdk-21:latest
+  deployment:
+    type: serverless
+    serverless:
+      platform: knative
+      serviceName: orders-functions
+      manifestPath: service.yaml
+      containerName: user-container
+      minScale: 0
+      maxScale: 20
+      scaleTarget: 50
+      metric: concurrency
+      containerConcurrency: 100
+      timeoutSeconds: 300
+      visibility: external
+  gitOps:
+    repositoryURL: https://github.com/example/orders-gitops.git
+    revision: main
+    path: environments/serverless-development
+    kustomizationImage: quay.io/open-industries/orders-functions
+    credentialsSecretRef:
+      name: gitops-credentials
+    argoCDNamespace: openshift-gitops
+    project: default
+    destinationServer: https://kubernetes.default.svc
+    destinationNamespace: orders-serverless
+    autoSync: true
+

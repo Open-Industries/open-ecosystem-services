@@ -97,6 +97,93 @@ spec:
               builderImage:
                 description: BuilderImage is any S2I-compatible builder image.
                 type: string
+              deployment:
+                description: Deployment selects standard Kubernetes or Knative serverless
+                  delivery.
+                properties:
+                  serverless:
+                    description: Serverless contains Knative-specific settings.
+                    properties:
+                      containerConcurrency:
+                        description: ContainerConcurrency is the hard concurrent-request
+                          limit per replica; zero means unlimited.
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      containerName:
+                        default: user-container
+                        description: ContainerName identifies the container receiving
+                          the built image.
+                        type: string
+                      manifestPath:
+                        default: service.yaml
+                        description: ManifestPath is relative to gitOps.path and identifies
+                          the Knative Service YAML.
+                        type: string
+                      maxScale:
+                        description: MaxScale limits the number of replicas.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      metric:
+                        default: concurrency
+                        description: Metric selects the Knative Pod Autoscaler metric.
+                        enum:
+                        - concurrency
+                        - rps
+                        type: string
+                      minScale:
+                        description: MinScale allows zero so the service can scale
+                          to zero.
+                        format: int32
+                        minimum: 0
+                        type: integer
+                      platform:
+                        default: knative
+                        description: Platform identifies the serverless API implementation.
+                        enum:
+                        - knative
+                        type: string
+                      scaleTarget:
+                        description: ScaleTarget is the per-replica target for the
+                          selected metric.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      serviceName:
+                        description: ServiceName is the metadata.name of the Knative
+                          Service.
+                        type: string
+                      timeoutSeconds:
+                        description: TimeoutSeconds is the maximum request execution
+                          time.
+                        format: int64
+                        minimum: 1
+                        type: integer
+                      visibility:
+                        default: external
+                        description: Visibility controls whether the Knative Route
+                          is externally reachable.
+                        enum:
+                        - external
+                        - cluster-local
+                        type: string
+                    required:
+                    - serviceName
+                    type: object
+                  type:
+                    default: standard
+                    description: Type selects Deployment/Service manifests or a Knative
+                      Service.
+                    enum:
+                    - standard
+                    - serverless
+                    type: string
+                type: object
+                x-kubernetes-validations:
+                - message: serverless configuration is required when deployment.type
+                    is serverless
+                  rule: self.type != 'serverless' || has(self.serverless)
               env:
                 description: Env selects CI+CD (development) or promotion-only CD
                   (production).
