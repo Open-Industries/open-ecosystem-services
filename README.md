@@ -24,6 +24,7 @@ The repository applies a provider-neutral, event-aware architecture with:
 | `examples/` | Synthetic requests and events |
 | `infrastructure/` | Kubernetes/OpenShift and Helm assets |
 | `observability/` | OpenTelemetry configuration |
+| `operators/appdeployer/` | S2I, Tekton and Argo CD application-delivery operator |
 | `policies/` | Rego policies for baseline governance |
 | `services/` | Domain and transversal microservices |
 | `tests/` | Contract, integration, resilience and performance tests |
@@ -46,6 +47,10 @@ Every request or event should carry `correlation_id`, `causation_id`, `schema_ve
 3. Add a reproducible local event broker profile.
 4. Add OpenShift deployment overlays.
 5. Validate latency, throughput, error rate, trace coverage and recovery.
+
+## AppDeployer Operator
+
+The [`operators/appdeployer`](operators/appdeployer/) module implements environment-aware application delivery for conventional Kubernetes/OpenShift workloads and Knative/OpenShift Serverless services. Development resources execute CI with Tekton and publish a GitOps change; production resources never build and instead validate an existing OCI image before promoting it through GitOps and Argo CD.
 
 ## License
 

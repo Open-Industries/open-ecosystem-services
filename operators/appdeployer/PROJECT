@@ -1,0 +1,17 @@
+domain: openindustries.org
+layout:
+- go.kubebuilder.io/v4
+projectName: appdeployer
+repo: github.com/Open-Industries/open-ecosystem-services/operators/appdeployer
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: openindustries.org
+  group: platform
+  kind: AppDeployer
+  path: github.com/Open-Industries/open-ecosystem-services/operators/appdeployer/api/v1alpha1
+  version: v1alpha1
+version: "3"
+

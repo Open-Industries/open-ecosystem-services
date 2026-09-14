@@ -1,0 +1,37 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: {{ .RunName }}
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: appdeployer
+    app.kubernetes.io/instance: {{ .Name }}
+    platform.openindustries.org/generation: {{ q .Generation }}
+spec:
+  pipelineRef:
+    name: {{ .Name }}
+  taskRunTemplate:
+    serviceAccountName: appdeployer-pipeline
+  params:
+    - name: git-url
+      value: {{ q .Spec.Source.URL }}
+    - name: git-revision
+      value: {{ q .SourceRevision }}
+    - name: context-dir
+      value: {{ q .SourceContextDir }}
+    - name: builder-image
+      value: {{ q .Spec.BuilderImage }}
+    - name: image-url
+      value: {{ q .ImageRef }}
+  workspaces:
+    - name: shared
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 2Gi
+    - name: registry-auth
+      secret:
+        secretName: {{ .RegistrySecret }}
+

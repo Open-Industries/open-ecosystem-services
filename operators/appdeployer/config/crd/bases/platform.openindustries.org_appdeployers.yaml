@@ -1,0 +1,466 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.18.0
+  name: appdeployers.platform.openindustries.org
+spec:
+  group: platform.openindustries.org
+  names:
+    categories:
+    - open-industries
+    kind: AppDeployer
+    listKind: AppDeployerList
+    plural: appdeployers
+    shortNames:
+    - appdep
+    singular: appdeployer
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.env
+      name: Environment
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.imageRef
+      name: Image
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: AppDeployerSpec defines the desired state.
+            properties:
+              artifactRepository:
+                description: ArtifactRepository configures Nexus or JFrog Artifactory.
+                properties:
+                  credentialsSecretRef:
+                    description: CredentialsSecretRef references username/password
+                      or token credentials.
+                    properties:
+                      name:
+                        description: Name is the Secret name.
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  mavenSettingsSecretRef:
+                    description: MavenSettingsSecretRef references a Secret containing
+                      settings.xml.
+                    properties:
+                      name:
+                        description: Name is the Secret name.
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  type:
+                    description: Type selects the repository implementation.
+                    enum:
+                    - nexus
+                    - artifactory
+                    type: string
+                  url:
+                    description: URL is the repository base URL.
+                    pattern: ^https?://.+
+                    type: string
+                required:
+                - type
+                - url
+                type: object
+              builderImage:
+                description: BuilderImage is any S2I-compatible builder image.
+                type: string
+              deployment:
+                description: Deployment selects standard Kubernetes or Knative serverless
+                  delivery.
+                properties:
+                  serverless:
+                    description: Serverless contains Knative-specific settings.
+                    properties:
+                      containerConcurrency:
+                        description: ContainerConcurrency is the hard concurrent-request
+                          limit per replica; zero means unlimited.
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      containerName:
+                        default: user-container
+                        description: ContainerName identifies the container receiving
+                          the built image.
+                        type: string
+                      manifestPath:
+                        default: service.yaml
+                        description: ManifestPath is relative to gitOps.path and identifies
+                          the Knative Service YAML.
+                        type: string
+                      maxScale:
+                        description: MaxScale limits the number of replicas.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      metric:
+                        default: concurrency
+                        description: Metric selects the Knative Pod Autoscaler metric.
+                        enum:
+                        - concurrency
+                        - rps
+                        type: string
+                      minScale:
+                        description: MinScale allows zero so the service can scale
+                          to zero.
+                        format: int32
+                        minimum: 0
+                        type: integer
+                      platform:
+                        default: knative
+                        description: Platform identifies the serverless API implementation.
+                        enum:
+                        - knative
+                        type: string
+                      scaleTarget:
+                        description: ScaleTarget is the per-replica target for the
+                          selected metric.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      serviceName:
+                        description: ServiceName is the metadata.name of the Knative
+                          Service.
+                        type: string
+                      timeoutSeconds:
+                        description: TimeoutSeconds is the maximum request execution
+                          time.
+                        format: int64
+                        minimum: 1
+                        type: integer
+                      visibility:
+                        default: external
+                        description: Visibility controls whether the Knative Route
+                          is externally reachable.
+                        enum:
+                        - external
+                        - cluster-local
+                        type: string
+                    required:
+                    - serviceName
+                    type: object
+                  type:
+                    default: standard
+                    description: Type selects Deployment/Service manifests or a Knative
+                      Service.
+                    enum:
+                    - standard
+                    - serverless
+                    type: string
+                type: object
+                x-kubernetes-validations:
+                - message: serverless configuration is required when deployment.type
+                    is serverless
+                  rule: self.type != 'serverless' || has(self.serverless)
+              env:
+                description: Env selects CI+CD (development) or promotion-only CD
+                  (production).
+                enum:
+                - development
+                - production
+                type: string
+              gitOps:
+                description: GitOpsConfig defines the deployment source of truth and
+                  Argo CD destination.
+                properties:
+                  argoCDNamespace:
+                    default: openshift-gitops
+                    description: ArgoCDNamespace contains the Application resource.
+                    type: string
+                  autoSync:
+                    default: true
+                    description: AutoSync enables prune and self-heal in the generated
+                      Application.
+                    type: boolean
+                  credentialsSecretRef:
+                    description: CredentialsSecretRef references username/password
+                      or SSH Git credentials.
+                    properties:
+                      name:
+                        description: Name is the Secret name.
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  destinationNamespace:
+                    description: DestinationNamespace receives the workload.
+                    type: string
+                  destinationServer:
+                    default: https://kubernetes.default.svc
+                    description: DestinationServer is the Kubernetes API endpoint
+                      known to Argo CD.
+                    type: string
+                  kustomizationImage:
+                    description: KustomizationImage is the image name replaced by
+                      `kustomize edit set image`.
+                    type: string
+                  path:
+                    description: Path is the environment-specific manifests or Kustomize
+                      directory.
+                    type: string
+                  project:
+                    default: default
+                    description: Project is the Argo CD project.
+                    type: string
+                  repositoryURL:
+                    description: RepositoryURL is the GitOps repository clone URL.
+                    type: string
+                  revision:
+                    default: main
+                    description: Revision is the GitOps branch updated and watched
+                      by Argo CD.
+                    type: string
+                required:
+                - destinationNamespace
+                - kustomizationImage
+                - path
+                - repositoryURL
+                type: object
+              registry:
+                description: RegistryConfig defines the OCI image destination and
+                  authentication.
+                properties:
+                  credentialsSecretRef:
+                    description: CredentialsSecretRef references a dockerconfigjson
+                      Secret.
+                    properties:
+                      name:
+                        description: Name is the Secret name.
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  image:
+                    description: Image is the repository without a tag, for example
+                      quay.io/acme/orders.
+                    type: string
+                  insecureSkipTLSVerify:
+                    default: false
+                    description: InsecureSkipTLSVerify is intended only for development
+                      registries.
+                    type: boolean
+                  tag:
+                    description: Tag is the immutable or release tag to build/promote.
+                    minLength: 1
+                    type: string
+                required:
+                - image
+                - tag
+                type: object
+              sonarQube:
+                description: SonarQubeConfig configures static analysis and Quality
+                  Gate enforcement.
+                properties:
+                  enabled:
+                    default: false
+                    description: Enabled controls execution of SonarQube analysis.
+                    type: boolean
+                  projectKey:
+                    description: ProjectKey identifies the project in SonarQube.
+                    type: string
+                  qualityGateTimeoutSeconds:
+                    default: 300
+                    description: QualityGateTimeoutSeconds is the maximum wait time
+                      for the gate result.
+                    format: int32
+                    minimum: 30
+                    type: integer
+                  qualityGateWait:
+                    default: true
+                    description: QualityGateWait makes the scanner wait and fail the
+                      task when the gate fails.
+                    type: boolean
+                  tokenSecretRef:
+                    description: TokenSecretRef references a Secret whose token key
+                      contains the API token.
+                    properties:
+                      name:
+                        description: Name is the Secret name.
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  url:
+                    description: URL is the SonarQube server URL.
+                    pattern: ^https?://.+
+                    type: string
+                type: object
+              source:
+                description: Source is required for development builds and ignored
+                  in production.
+                properties:
+                  contextDir:
+                    default: .
+                    description: ContextDir is the application directory inside the
+                      repository.
+                    type: string
+                  credentialsSecretRef:
+                    description: CredentialsSecretRef optionally references a Tekton-compatible
+                      Git Secret.
+                    properties:
+                      name:
+                        description: Name is the Secret name.
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  revision:
+                    default: main
+                    description: Revision is a branch, tag, or commit.
+                    type: string
+                  url:
+                    description: URL is the HTTPS or SSH clone URL.
+                    pattern: ^(https://|ssh://|git@).+
+                    type: string
+                required:
+                - url
+                type: object
+              tests:
+                description: TestConfig controls optional pipeline test stages.
+                properties:
+                  integrationTestCommand:
+                    description: IntegrationTestCommand receives IMAGE_URL in its
+                      environment.
+                    type: string
+                  integrationTests:
+                    default: false
+                    description: IntegrationTests enables post-build integration tests.
+                    type: boolean
+                  testImage:
+                    default: registry.access.redhat.com/ubi9/openjdk-21:latest
+                    description: TestImage provides the tools needed by the configured
+                      commands.
+                    type: string
+                  unitTestCommand:
+                    default: ./mvnw test
+                    description: UnitTestCommand is executed from the source context
+                      directory.
+                    type: string
+                  unitTests:
+                    default: true
+                    description: UnitTests enables the unit-test task.
+                    type: boolean
+                type: object
+            required:
+            - env
+            - gitOps
+            - registry
+            type: object
+            x-kubernetes-validations:
+            - message: source and builderImage are required when env is development
+              rule: self.env != 'development' || (has(self.source) && has(self.builderImage)
+                && size(self.builderImage) > 0)
+          status:
+            description: AppDeployerStatus reports reconciliation and delivery progress.
+            properties:
+              argoApplicationName:
+                type: string
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              gitOpsJobName:
+                type: string
+              imageRef:
+                type: string
+              observedGeneration:
+                format: int64
+                type: integer
+              phase:
+                type: string
+              pipelineRunName:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

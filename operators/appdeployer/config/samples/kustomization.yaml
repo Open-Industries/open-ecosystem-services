@@ -1,0 +1,5 @@
+resources:
+  - platform_v1alpha1_appdeployer_development.yaml
+  - platform_v1alpha1_appdeployer_production.yaml
+  - platform_v1alpha1_appdeployer_serverless.yaml
+

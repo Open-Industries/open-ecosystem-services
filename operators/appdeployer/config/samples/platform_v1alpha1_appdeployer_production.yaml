@@ -1,0 +1,26 @@
+apiVersion: platform.openindustries.org/v1alpha1
+kind: AppDeployer
+metadata:
+  name: orders-api-production
+  namespace: orders-prod
+spec:
+  env: production
+  registry:
+    image: quay.io/open-industries/orders-api
+    tag: 1.0.0
+    credentialsSecretRef:
+      name: registry-pull-credentials
+  deployment:
+    type: standard
+  gitOps:
+    repositoryURL: https://github.com/example/orders-gitops.git
+    revision: main
+    path: environments/production
+    kustomizationImage: quay.io/open-industries/orders-api
+    credentialsSecretRef:
+      name: gitops-credentials
+    argoCDNamespace: openshift-gitops
+    project: default
+    destinationServer: https://kubernetes.default.svc
+    destinationNamespace: orders-prod
+    autoSync: true
