@@ -1,3 +1,5 @@
+> Use the [Architecture Description Template](templates/architecture-description-template.md) to create or extend the architecture description for this repository. It provides prompts for stakeholders, concerns, architecture views, quality attributes, security, operations, decisions, and validation. Tailor it to the system; the template is not a certification claim.
+
 # Reference architecture
 
 ## Scope
