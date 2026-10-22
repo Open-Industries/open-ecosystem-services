@@ -20,7 +20,7 @@ The repository applies a provider-neutral, event-aware architecture with:
 | Path | Purpose |
 |---|---|
 | `contracts/` | OpenAPI, AsyncAPI and CloudEvents schemas |
-| `docs/` | Architecture, domain model and ADRs |
+| `docs/` | Architecture, domain model, ADRs, and the reusable [Architecture Description Template](docs/templates/architecture-description-template.md) |
 | `examples/` | Synthetic requests and events |
 | `infrastructure/` | Kubernetes/OpenShift and Helm assets |
 | `observability/` | OpenTelemetry configuration |
