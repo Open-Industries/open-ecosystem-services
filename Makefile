@@ -1,7 +1,20 @@
-.PHONY: validate test
+# Open Ecosystem Services — Reference Ecosystem Services Core Platform — developer entry points
+.PHONY: build test verify dev-pilot compose-up compose-down
 
-validate:
-	@python3 -c 'import json,pathlib; [json.loads(p.read_text()) for p in pathlib.Path(".").rglob("*.json")]; print("JSON valid")'
+build:
+	mvn -q package -DskipTests
 
-test: validate
-	@cd operators/appdeployer && go test ./...
+test:
+	mvn test
+
+verify:           ## Full verification (life-cycle gate G3)
+	mvn verify
+
+dev-pilot:
+	mvn -pl services/ecosystem-asset-service quarkus:dev
+
+compose-up:
+	docker compose up -d
+
+compose-down:
+	docker compose down
